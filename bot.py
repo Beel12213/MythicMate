@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import os
 from dotenv import load_dotenv
+import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -41,6 +42,32 @@ def translate_dungeon_name(user_input):
             return full_name
     return None
 
+# Function to formats a date string (YYYY-MM-DD) into a descriptive format
+def format_descriptive_date(date_str: str) -> str:
+    """
+    Formats a date string (YYYY-MM-DD) into a descriptive format like
+    'Monday, 20th of January of 2025'.
+
+    Args:
+        date_str (str): The input date string in the format 'YYYY-MM-DD'.
+
+    Returns:
+        str: The formatted descriptive date string.
+    """
+    # Parse the date string into a datetime object
+    date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+
+    # Determine the ordinal suffix for the day
+    day = date_obj.day
+    if 10 <= day % 100 <= 20:  # Handles 11th to 20th
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+    # Format the date descriptively
+    formatted_date = date_obj.strftime(f"%A, {day}{suffix} of %B of %Y")
+    return formatted_date
+
 # Define the roles for Tank, Healer, and DPS using emoji symbols
 role_emojis = {
     "Tank": "🛡️",
@@ -62,11 +89,40 @@ async def on_ready():
 # Define the /lfm slash command for looking for members for a Mythic+ run
 @bot.tree.command(name="lfm", description="Start looking for members for a Mythic+ run.")
 @app_commands.describe(
+    schedule_date="Enter the desired day (YYYY-MM-DD).",
+    schedule_time="Enter the desired time (HH:MM). ",
     dungeon="Enter the dungeon name or abbreviation",
     key_level="Enter the key level (e.g., +10)",
     role="Select your role in the group"
 )
-async def lfm(interaction: discord.Interaction, dungeon: str, key_level: str, role: str):
+async def lfm(interaction: discord.Interaction, schedule_date: str, schedule_time: str, dungeon: str, key_level: str, role: str):
+
+    # Validate the date and time inputs
+    if schedule_date:
+        try:
+            datetime.datetime.strptime(schedule_date, "%Y-%m-%d")
+        except ValueError:
+            await interaction.response.send_message(
+                f"Invalid date format: '{schedule_date}'. Please use YYYY-MM-DD.",
+                ephemeral=True
+            )
+            return
+
+    if schedule_time:
+        try:
+            datetime.datetime.strptime(schedule_time, "%H:%M")
+        except ValueError:
+            await interaction.response.send_message(
+                f"Invalid time format: '{schedule_time}'. Please use HH:MM.",
+                ephemeral=True
+            )
+            return
+
+    # Build the date and time string for the embed description
+    date_time_str = ""
+    if schedule_date or schedule_time:
+        date_time_str = f"Scheduled for: {format_descriptive_date(schedule_date)} at {schedule_time}h"
+
     # Translate the dungeon name using the custom logic
     full_dungeon_name = translate_dungeon_name(dungeon)
 
@@ -80,7 +136,7 @@ async def lfm(interaction: discord.Interaction, dungeon: str, key_level: str, ro
 
     # Create an embed message to display the group information
     embed = discord.Embed(
-        title=f"Dungeon: {full_dungeon_name}",  # Include the full dungeon name in the title
+        title=f"{date_time_str}\nDungeon: {full_dungeon_name}", # Include the full dungeon name in the title
         description=f"Difficulty: {key_level}",  # Display the difficulty (key level)
         color=discord.Color.blue()
     )
