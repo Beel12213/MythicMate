@@ -30,22 +30,23 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # Define the available dungeons and their abbreviations
 # This dictionary maps full dungeon names to a list of their common abbreviations or shorthand names
 dungeon_aliases = {
-    "Ara-Kara, City of Echoes": ["ara", "city of echoes", "coe"],
+    "Ara-Kara, City of Echoes": ["ara", "city of echoes", "coe", "arakara", "ak"],
     "City of Threads": ["threads", "city of threads", "cot"],
-    "The Stonevault": ["stonevault", "vault"],
-    "The Dawnbreaker": ["dawnbreaker", "breaker"],
-    "Mists of Tirna Scithe": ["mists", "tirna", "scithe", "mots"],
-    "The Necrotic Wake": ["nw", "necrotic wake", "necrotic"],
-    "Siege of Boralus": ["siege", "boralus", "sob"],
+    "The Stonevault": ["stonevault", "vault", "sv"],
+    "The Dawnbreaker": ["dawnbreaker", "breaker", "db", "dawn"],
+    "Mists of Tirna Scithe": ["mists", "tirna", "scithe", "mots", "tirna schithe"],
+    "The Necrotic Wake": ["nw", "necrotic wake", "necrotic", "the necrotic wake"],
+    "Siege of Boralus": ["siege", "boralus", "sob", "siege of boralus"],
     "Grim Batol": ["grim", "batol", "gb"],
-    "Operation: Floodgate": ["flood", "floodgate", "of"],
-    "Cinderbrew Meadery": ["cinder", "meadery", "brew", "cm"],
-    "Darkflame Cleft": ["dark", "flame", "cleft", "dc"],
-    "The Rookery": ["rook", "rookery"],
+    "Operation: Floodgate": ["flood", "floodgate", "of", "operation", "operation floodgate"],
+    "Cinderbrew Meadery": ["cinder", "meadery", "brew", "cm", "cinderbrew"],
+    "Darkflame Cleft": ["dark", "flame", "cleft", "dc", "darkflame"],
+    "The Rookery": ["rook", "rookery", "tr"],
     "Priory of the Sacred Flame": ["priory", "sacred", "flame", "psf"],
     "The MOTHERLODE!!": ["ml", "mother", "motherlode"],
     "Theater of Pain": ["top", "theater", "pain", "tp"],
-    "Operation: Mechagon: Workshop": ["workshop", "mech", "omw"]
+    "Operation: Mechagon: Workshop": ["workshop", "mech", "omw", "mechagon"],
+    "Other": ["other"]
 }
 
 # Convert to a more efficient structure using sets for O(1) lookup
@@ -136,9 +137,9 @@ async def update_group_embed(message, embed, group_state):
 
 @bot.tree.command(name="lfm", description="Start looking for members for a Mythic+ run.")
 @app_commands.describe(
-    dungeon="Enter the dungeon name or abbreviation",
+    dungeon="Enter the dungeon name, abbreviation or Other",
     key_level="Enter the key level (e.g., +10)",
-    role="Select your role in the group",
+    role="Select your role in the group (Tank, Dps, Healer)",
     schedule="When to run (e.g., 'now' or 'YYYY-MM-DD HH:MM' in server time)"
 )
 async def lfm(interaction: discord.Interaction, dungeon: str, key_level: str, role: str, schedule: str):
@@ -166,26 +167,35 @@ async def lfm(interaction: discord.Interaction, dungeon: str, key_level: str, ro
     # Handle scheduling
     schedule_time = None
     if schedule.lower() != "now":
-        try:
-            schedule_time = datetime.strptime(schedule, "%Y-%m-%d %H:%M")
-            schedule_time = pytz.UTC.localize(schedule_time)
-            
-            # Ensure scheduled time is in the future
-            if schedule_time <= datetime.now(pytz.UTC):
-                await interaction.response.send_message(
-                    "The scheduled time must be in the future.",
-                    ephemeral=True
-                )
-                return
-        except ValueError:
+        formats = ["%Y-%m-%d %H:%M", "%Y-%m-%d %I:%M %p"]  # 24h and 12h formats
+
+        for fmt in formats:
+            try:
+                schedule_time = datetime.strptime(schedule, fmt)
+                schedule_time = pytz.UTC.localize(schedule_time)
+
+                # Ensure scheduled time is in the future
+                if schedule_time <= datetime.now(pytz.UTC):
+                    await interaction.response.send_message(
+                        "The scheduled time must be in the future.",
+                        ephemeral=True
+                    )
+                    return
+                break  # exit the loop if time is parsed successfully
+            except ValueError:
+                continue  # try the next format if the current one fails
+
+        if schedule_time is None:  # if none of the formats worked
             await interaction.response.send_message(
-                "Invalid date/time format. Please use 'now' or 'YYYY-MM-DD HH:MM'.",
+                "Invalid date/time format. Please use 'now' or 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM AM/PM'.",
                 ephemeral=True
             )
             return
+    else:
+        schedule_time = datetime.now(pytz.UTC)
 
     # Format schedule string and send initial response
-    schedule_str = "now" if not schedule_time else schedule_time.strftime("%Y-%m-%d %H:%M")
+    schedule_str = "now" if schedule.lower() == "now" else schedule_time.strftime("%Y-%m-%d %H:%M")
     await interaction.response.defer()
 
     # Initialize group state and create embed
